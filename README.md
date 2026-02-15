@@ -4,7 +4,7 @@
 
 It answers one critical question: **“Is the authenticated user allowed to perform this action?”**
 
-This package is inspired by Laravel’s Gates & Policies, but designed specifically for a modular, TypeScript-first Node.js framework.
+This package provides a powerful authorization system with Gates and Policies, designed specifically for a modular, TypeScript-first Node.js framework.
 
 ---
 
