@@ -1,10 +1,15 @@
 ## Arika Authorization
 
-`@arikajs/authorization` provides authorization (access control) for the ArikaJS framework.
+`@arikajs/authorization` provides a powerful, enterprise-grade authorization (access control) system for the ArikaJS framework.
 
-It answers one critical question: **“Is the authenticated user allowed to perform this action?”**
+It answers one critical question: **"Is the authenticated user allowed to perform this action?"**
 
-This package provides a powerful authorization system with Gates and Policies, designed specifically for a modular, TypeScript-first Node.js framework.
+```ts
+// Per-request scoped — safe for concurrent requests
+if (await req.can('edit-post', post)) {
+  // authorized
+}
+```
 
 ---
 
@@ -12,10 +17,14 @@ This package provides a powerful authorization system with Gates and Policies, d
 
 - **Stage**: Experimental / v0.x
 - **Scope**:
-  - Gate-based authorization
-  - Policy-based authorization
-  - Authorization middleware
-  - Centralized permission logic
+  - Gate-based authorization with `before()` / `after()` hooks
+  - Policy-based authorization with auto-discovery
+  - Response-based authorization (custom deny messages)
+  - Role & Permission system
+  - Bulk ability checks (`any` / `every` / `none`)
+  - Request-scoped authorization context (concurrency safe)
+  - Authorization middleware with role/permission support
+  - Result caching per-request for performance
 - **Design**:
   - Framework-agnostic (usable outside HTTP layer)
   - Decoupled from transport layer
@@ -36,12 +45,14 @@ This package works on top of `@arikajs/auth` but remains fully decoupled from it
 
 ## 🚀 Features
 
-- **Gate-based authorization**: Simple closure-based checks.
-- **Policy-based authorization**: Organize logic per model/resource.
-- **Middleware integration**: Protect routes easily.
-- **Controller & service-level checks**: Call authorization logic from anywhere.
-- **Type-safe APIs**: Built for TypeScript.
-- **Framework-agnostic**: Can be used in CLI, WebSocket, or HTTP contexts.
+- **Gate-based authorization** — Simple closure-based checks with before/after hooks.
+- **Policy-based authorization** — Organize logic per model/resource with `before()` bypass.
+- **Response-based authorization** — Return custom deny messages instead of plain booleans.
+- **Role & Permission system** — First-class role and permission checking.
+- **Bulk ability checks** — `Gate.any()`, `Gate.every()`, `Gate.none()` for multi-ability checks.
+- **Request-scoped context** — Memory-safe, per-request isolation with built-in result caching.
+- **Middleware integration** — Protect routes with `can:`, `role:`, and `permission:` prefixes.
+- **Type-safe APIs** — Built for TypeScript.
 
 ---
 
@@ -49,10 +60,6 @@ This package works on top of `@arikajs/auth` but remains fully decoupled from it
 
 ```bash
 npm install @arikajs/authorization
-# or
-yarn add @arikajs/authorization
-# or
-pnpm add @arikajs/authorization
 ```
 
 ---
@@ -74,13 +81,8 @@ Gate.define('edit-post', (user, post) => {
 **Usage:**
 
 ```ts
-if (Gate.allows('edit-post', post)) {
-  // ...
-}
-
-if (Gate.denies('edit-post', post)) {
-  // ...
-}
+if (await Gate.forUser(user).allows('edit-post', post)) { ... }
+if (await Gate.forUser(user).denies('edit-post', post)) { ... }
 ```
 
 ### 2️⃣ Policies
@@ -89,55 +91,161 @@ Policies organize authorization logic around a specific model or resource.
 
 ```ts
 class PostPolicy {
-  view(user, post) {
+  // Super admin bypass — runs before any check
+  before(user: any, ability: string) {
+    if (user.isSuperAdmin) return true;
+    return null; // continue to actual check
+  }
+
+  view(user: any, post: Post) {
     return true;
   }
 
-  update(user, post) {
+  update(user: any, post: Post) {
     return user.id === post.userId;
+  }
+
+  delete(user: any, post: Post) {
+    if (user.id !== post.userId) {
+      return AuthResponse.deny('You do not own this post.', 'POST_NOT_OWNED');
+    }
+    return AuthResponse.allow();
   }
 }
 ```
 
-**Register Policy:**
+**Register & Use:**
 
 ```ts
 Gate.policy(Post, PostPolicy);
-```
 
-**Usage:**
-
-```ts
 // Automatically resolves to PostPolicy.update
-Gate.allows('update', post); 
+await Gate.forUser(user).allows('update', post);
 ```
 
-### 3️⃣ Authorization Manager
+### 3️⃣ Authorization Context (Per-Request)
 
-The central engine that evaluates permissions.
+Each request should get its own `AuthorizationContext` for isolation and caching:
 
 ```ts
-const authz = new AuthorizationManager(user);
+const ctx = new AuthorizationContext(user);
 
-authz.can('edit-post', post);
-authz.cannot('delete-post', post);
+await ctx.can('edit-post', post);     // true
+await ctx.cannot('delete-post', post); // true
+await ctx.authorize('edit-post', post); // throws if denied
+```
+
+---
+
+## 🔑 Role & Permission System
+
+ArikaJS Authorization provides first-class role and permission checking:
+
+```ts
+import { RolePermissionMixin, AuthorizationContext } from '@arikajs/authorization';
+
+// Direct usage
+RolePermissionMixin.hasRole(user, 'admin');           // true/false
+RolePermissionMixin.hasAnyRole(user, ['admin', 'editor']);
+RolePermissionMixin.hasPermission(user, 'edit-posts');
+RolePermissionMixin.hasAllPermissions(user, ['view-posts', 'edit-posts']);
+
+// Via request-scoped context
+const ctx = new AuthorizationContext(user);
+ctx.hasRole('admin');
+ctx.hasAnyPermission(['edit-posts', 'delete-posts']);
+```
+
+User objects should have `roles` and `permissions` arrays (strings or `{name: string}` objects).
+
+---
+
+## 🛡️ Before / After Hooks
+
+### Global Before Hook (Super Admin Bypass)
+
+```ts
+Gate.before((user, ability) => {
+  if (user.isSuperAdmin) return true; // Bypasses ALL checks
+  return null; // Continue to actual check
+});
+```
+
+### Global After Hook (Audit Logging)
+
+```ts
+Gate.after((user, ability, result) => {
+  console.log(`${user.name} → ${ability}: ${result ? 'ALLOWED' : 'DENIED'}`);
+});
+```
+
+### Policy-Level Before Hook
+
+```ts
+class PostPolicy {
+  before(user, ability) {
+    if (user.isSuperAdmin) return true;
+    return null;
+  }
+}
+```
+
+---
+
+## 🔍 Bulk Ability Checks
+
+Check multiple abilities in a single call:
+
+```ts
+// Can the user do ANY of these?
+await Gate.forUser(user).any(['edit-post', 'delete-post'], post);
+
+// Can the user do ALL of these?
+await Gate.forUser(user).every(['edit-post', 'publish-post'], post);
+
+// Can the user do NONE of these?
+await Gate.forUser(user).none(['admin-only', 'super-admin-only']);
+```
+
+---
+
+## 💬 Response-Based Authorization
+
+Instead of returning plain `true`/`false`, return an `AuthResponse` with custom error messages:
+
+```ts
+import { AuthResponse } from '@arikajs/authorization';
+
+Gate.define('edit-post', (user, post) => {
+  if (user.id !== post.userId) {
+    return AuthResponse.deny('You do not own this post.', 'POST_NOT_OWNED');
+  }
+  return AuthResponse.allow();
+});
+
+// Inspect the full response
+const response = await Gate.forUser(user).inspect('edit-post', post);
+response.allowed();  // false
+response.message();  // 'You do not own this post.'
+response.code();     // 'POST_NOT_OWNED'
 ```
 
 ---
 
 ## 🧩 Middleware Support
 
-Protect routes using authorization middleware:
+Protect routes using authorization middleware with multiple strategies:
 
 ```ts
-Route.get('/posts/:id/edit', controller)
-  .middleware('can:edit-post');
-```
+// Gate/Policy check
+Route.get('/posts/:id/edit', controller).middleware('can:edit-post');
 
-WITH arguments (e.g. Policies):
+// Role-based
+Route.get('/admin', controller).middleware('role:admin');
+Route.get('/dashboard', controller).middleware('role:admin,editor');
 
-```ts
-.middleware('can:update,post');
+// Permission-based
+Route.get('/settings', controller).middleware('permission:manage-settings');
 ```
 
 Middleware automatically:
@@ -147,19 +255,12 @@ Middleware automatically:
 
 ---
 
-## 🧑💻 Controller Usage
+## ⚡ Performance
 
-```ts
-class PostController {
-  update(request) {
-    Gate.authorize('update', request.post);
-
-    // Authorized logic proceeds here...
-  }
-}
-```
-
-If unauthorized, it throws an `AuthorizationException`, which is automatically handled by the HTTP layer.
+- **Per-request caching**: `AuthorizationContext` caches ability results within a single request, preventing redundant gate/policy evaluation.
+- **Policy instance caching**: `PolicyResolver` caches instantiated policy objects instead of creating new ones on every call.
+- **Short-circuit evaluation**: `before()` hooks return immediately without running the actual check.
+- **Bulk checks early-exit**: `any()` returns on first `true`, `none()` returns on first `true`.
 
 ---
 
@@ -168,11 +269,14 @@ If unauthorized, it throws an `AuthorizationException`, which is automatically h
 ```
 authorization/
 ├── src/
-│   ├── Gate.ts                  ← Define & evaluate abilities
-│   ├── AuthorizationManager.ts  ← Core authorization engine
-│   ├── PolicyResolver.ts        ← Maps models to policies
+│   ├── Gate.ts                      ← Define & evaluate abilities (with hooks)
+│   ├── AuthorizationManager.ts      ← Core engine with context factory
+│   ├── AuthorizationContext.ts      ← Per-request scoped auth checks + caching
+│   ├── AuthResponse.ts              ← Rich allow/deny response objects
+│   ├── PolicyResolver.ts            ← Maps models to policies (with instance cache)
+│   ├── RolePermission.ts            ← Role & permission mixin
 │   ├── Middleware/
-│   │   └── Authorize.ts         ← Route-level protection
+│   │   └── Authorize.ts             ← Route protection (can, role, permission)
 │   ├── Exceptions/
 │   │   └── AuthorizationException.ts
 │   ├── Contracts/
@@ -197,25 +301,15 @@ authorization/
 
 ---
 
-## 🧪 Error Handling
-
-Unauthorized access throws:
-- `AuthorizationException` (403)
-
-Handled automatically by:
-- HTTP kernel
-- Middleware pipeline
-
----
-
 ## 📌 Design Philosophy
 
 - **Explicit over implicit**: Authorization rules should be clear.
 - **Centralized rules**: Keep logic in Gates or Policies, not controllers.
-- **Readable permission names**: Use descriptive names like `edit-post`.
+- **Rich feedback**: Return custom error messages, not just true/false.
+- **Performance first**: Cache results, short-circuit, instance re-use.
 - **Decoupled from transport layer**: Logic works for HTTP, CLI, etc.
 
-> “Authentication identifies the user. Authorization empowers or restricts them.”
+> "Authentication identifies the user. Authorization empowers or restricts them."
 
 ---
 

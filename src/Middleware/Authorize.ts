@@ -1,14 +1,16 @@
 import { Gate } from '../Gate';
 import { AuthorizationException } from '../Exceptions/AuthorizationException';
+import { RolePermissionMixin } from '../RolePermission';
 
 export class Authorize {
     /**
      * Handle authorization middleware.
      * 
-     * @param request - The request object (should have user attached)
-     * @param next - The next middleware function
-     * @param ability - The ability to check (e.g., 'edit-post' or 'update')
-     * @param resourceKey - Optional resource key from request (e.g., 'post')
+     * Usage:
+     *   .middleware('can:edit-post')           → Gate check
+     *   .middleware('can:update,post')         → Policy check using req[resourceKey]
+     *   .middleware('role:admin')              → Role check
+     *   .middleware('permission:edit-posts')   → Permission check
      */
     public async handle(
         request: any,
@@ -16,15 +18,33 @@ export class Authorize {
         ability: string,
         resourceKey?: string
     ): Promise<any> {
-        const user = request.user;
+        const user = request.user || (request.auth && await request.auth.user());
 
         if (!user) {
             throw new AuthorizationException('User not authenticated.');
         }
 
+        // Role-based check: 'role:admin' or 'role:admin,editor'
+        if (ability.startsWith('role:')) {
+            const roles = ability.substring(5).split(',');
+            if (!RolePermissionMixin.hasAnyRole(user, roles)) {
+                throw new AuthorizationException(`User does not have the required role.`);
+            }
+            return next();
+        }
+
+        // Permission-based check: 'permission:edit-posts'
+        if (ability.startsWith('permission:')) {
+            const permissions = ability.substring(11).split(',');
+            if (!RolePermissionMixin.hasAnyPermission(user, permissions)) {
+                throw new AuthorizationException(`User does not have the required permission.`);
+            }
+            return next();
+        }
+
+        // Standard gate/policy check
         Gate.forUser(user);
 
-        // If resourceKey is provided, get resource from request
         const resource = resourceKey ? request[resourceKey] : null;
 
         if (resource) {
