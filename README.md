@@ -266,26 +266,50 @@ Middleware automatically:
 
 ## 🏗 Architecture
 
-```
+```text
 authorization/
 ├── src/
-│   ├── Gate.ts                      ← Define & evaluate abilities (with hooks)
-│   ├── AuthorizationManager.ts      ← Core engine with context factory
-│   ├── AuthorizationContext.ts      ← Per-request scoped auth checks + caching
-│   ├── AuthResponse.ts              ← Rich allow/deny response objects
-│   ├── PolicyResolver.ts            ← Maps models to policies (with instance cache)
-│   ├── RolePermission.ts            ← Role & permission mixin
-│   ├── Middleware/
-│   │   └── Authorize.ts             ← Route protection (can, role, permission)
-│   ├── Exceptions/
-│   │   └── AuthorizationException.ts
-│   ├── Contracts/
+│   ├── Contracts
 │   │   └── Policy.ts
-│   └── index.ts
+│   ├── Exceptions
+│   │   └── AuthorizationException.ts
+│   ├── Middleware
+│   │   └── Authorize.ts
+│   ├── AuthorizationContext.ts
+│   ├── AuthorizationManager.ts
+│   ├── AuthResponse.ts
+│   ├── Gate.ts
+│   ├── index.ts
+│   ├── PolicyResolver.ts
+│   └── RolePermission.ts
+├── tests/
 ├── package.json
 ├── tsconfig.json
-├── README.md
-└── LICENSE
+└── README.md
+```
+
+
+
+```text
+authorization/
+├── src/
+│   ├── Contracts
+│   │   └── Policy.ts
+│   ├── Exceptions
+│   │   └── AuthorizationException.ts
+│   ├── Middleware
+│   │   └── Authorize.ts
+│   ├── AuthorizationContext.ts
+│   ├── AuthorizationManager.ts
+│   ├── AuthResponse.ts
+│   ├── Gate.ts
+│   ├── index.ts
+│   ├── PolicyResolver.ts
+│   └── RolePermission.ts
+├── tests/
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
 
 ---
