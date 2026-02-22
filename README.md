@@ -264,32 +264,6 @@ Middleware automatically:
 
 ---
 
-## 🏗 Architecture
-
-```text
-authorization/
-├── src/
-│   ├── Contracts
-│   │   └── Policy.ts
-│   ├── Exceptions
-│   │   └── AuthorizationException.ts
-│   ├── Middleware
-│   │   └── Authorize.ts
-│   ├── AuthorizationContext.ts
-│   ├── AuthorizationManager.ts
-│   ├── AuthResponse.ts
-│   ├── Gate.ts
-│   ├── index.ts
-│   ├── PolicyResolver.ts
-│   └── RolePermission.ts
-├── tests/
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
-
-
 ```text
 authorization/
 ├── src/
@@ -348,3 +322,28 @@ authorization/
 ## 📜 License
 
 `@arikajs/authorization` is open-sourced software licensed under the **MIT License**.
+
+## 🏗 Architecture
+
+```text
+authorization/
+├── src/
+│   ├── Contracts
+│   │   └── Policy.ts
+│   ├── Exceptions
+│   │   └── AuthorizationException.ts
+│   ├── Middleware
+│   │   └── Authorize.ts
+│   ├── AuthorizationContext.ts
+│   ├── AuthorizationManager.ts
+│   ├── AuthResponse.ts
+│   ├── Gate.ts
+│   ├── index.ts
+│   ├── PolicyResolver.ts
+│   └── RolePermission.ts
+├── tests/
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
